@@ -1,4 +1,4 @@
-# OHealth Rewriter
+# OHealth Steps Rewriter
 
 This Android application reads step data from the OHealth app (`com.heytap.health.international`) and rewrites it to Health Connect, allowing you to modify the device metadata associated with the step records.
 
