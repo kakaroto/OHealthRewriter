@@ -19,6 +19,17 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Decode Keystore
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "${{ github.workspace }}/app/ohealth-rewriter.keystore"
+
+    - name: Create keystore.properties
+      run: |
+        echo "storeFile=app/ohealth-rewriter.keystore" > keystore.properties
+        echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> keystore.properties
+        echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
+        echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
@@ -28,7 +39,7 @@ jobs:
     - name: Rename APKs
       run: |
         mv app/build/outputs/apk/debug/app-debug.apk OHealthRewriter-debug.apk
-        mv app/build/outputs/apk/release/app-release-unsigned.apk OHealthRewriter.apk
+        mv app/build/outputs/apk/release/app-release.apk OHealthRewriter.apk
 
     - name: Create or Update Release
       uses: softprops/action-gh-release@v2
