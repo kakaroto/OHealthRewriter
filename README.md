@@ -1,6 +1,6 @@
-<div style="text-align: center;">
-![OHealth Steps Rewriter Logo](assets/logo.svg)
-</div>
+<p align="center">
+  <img src="assets/logo.svg" alt="OHealth Steps Rewriter Logo"/>
+</p>
 
 # OHealth Steps Rewriter
 
