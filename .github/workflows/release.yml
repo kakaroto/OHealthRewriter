@@ -26,7 +26,7 @@ jobs:
 
     - name: Create keystore.properties
       run: |
-        echo "storeFile=app/ohealth-rewriter.keystore" > keystore.properties
+        echo "storeFile=${{ github.workspace }}/app/ohealth-rewriter.keystore" > keystore.properties
         echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> keystore.properties
         echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
         echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
