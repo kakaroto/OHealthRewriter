@@ -21,12 +21,12 @@ jobs:
         cache: gradle
 
     - name: Decode Keystore
-      if: secrets.KEYSTORE_BASE64 != ''
+      if: ${{ secrets.KEYSTORE_BASE64 != '' }}
       run: |
         echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "${{ github.workspace }}/app/ohealth-rewriter.keystore"
 
     - name: Create keystore.properties
-      if: secrets.KEYSTORE_BASE64 != ''
+      if: ${{ secrets.KEYSTORE_BASE64 != '' }}
       run: |
         echo "storeFile=app/ohealth-rewriter.keystore" > keystore.properties
         echo "storePassword=${{ secrets.STORE_PASSWORD }}" >> keystore.properties
