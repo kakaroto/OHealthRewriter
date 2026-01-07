@@ -45,7 +45,7 @@ class StepRewriteWorker(
 
                 rewrite(record)
                 rewritten++
-                total_steps += (record.count as Int)
+                total_steps += record.count.toInt()
             }
         }
 
