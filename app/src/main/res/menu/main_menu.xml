@@ -4,4 +4,8 @@
         android:id="@+id/action_settings"
         android:title="Settings"
         android:icon="@android:drawable/ic_menu_manage" />
+    <item
+        android:id="@+id/action_export_log"
+        android:title="Export Log"
+        android:icon="@android:drawable/ic_menu_save" />
 </menu>

@@ -1,5 +1,6 @@
 package ca.kakaroto.ohealthrewriter
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -9,6 +10,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.widget.Button
 import android.widget.TextView
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.text.HtmlCompat
@@ -17,6 +19,7 @@ import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
 import androidx.work.*
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -26,6 +29,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private lateinit var logView: TextView
     private lateinit var prefs: SharedPreferences
+    private lateinit var createFileLauncher: ActivityResultLauncher<Intent>
 
     private val permissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -60,6 +64,14 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
 
         requestPermissions.launch(permissions)
+
+        createFileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (it.resultCode == Activity.RESULT_OK) {
+                it.data?.data?.let {
+                    writeLogToFile(it)
+                }
+            }
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -71,6 +83,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         return when (item.itemId) {
             R.id.action_settings -> {
                 startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            R.id.action_export_log -> {
+                exportLog()
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -131,5 +147,25 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun clearLogs() {
         prefs.edit().putString("logs", "").apply()
+    }
+
+    private fun exportLog() {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/html"
+            putExtra(Intent.EXTRA_TITLE, "OHealth-log.html")
+        }
+        createFileLauncher.launch(intent)
+    }
+
+    private fun writeLogToFile(uri: android.net.Uri) {
+        try {
+            val logs = prefs.getString("logs", "") ?: ""
+            contentResolver.openOutputStream(uri)?.use { 
+                it.write(logs.toByteArray())
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
     }
 }
