@@ -81,6 +81,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onResume()
         prefs.registerOnSharedPreferenceChangeListener(this)
         refreshLogs()
+        appendLog("Checking for new steps data...")
+        poll()
     }
 
     override fun onPause() {
@@ -106,10 +108,13 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         )
     }
 
-    private fun triggerManualPoll() {
+    private fun poll() {
         val work = OneTimeWorkRequestBuilder<StepRewriteWorker>().build()
         WorkManager.getInstance(this).enqueue(work)
+    }
+    private fun triggerManualPoll() {
         appendLog("Manual poll triggered")
+        poll()
     }
 
     private fun appendLog(msg: String) {

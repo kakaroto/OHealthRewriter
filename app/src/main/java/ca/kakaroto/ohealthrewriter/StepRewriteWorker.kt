@@ -2,7 +2,6 @@ package ca.kakaroto.ohealthrewriter
 
 import android.content.Context
 import android.util.Log
-import androidx.core.text.HtmlCompat
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.changes.UpsertionChange
 import androidx.health.connect.client.request.ChangesTokenRequest
@@ -51,7 +50,11 @@ class StepRewriteWorker(
         }
 
         prefs.edit().putString("changes_token", response.nextChangesToken).apply()
-        log("Worker completed — rewritten $rewritten records. Total new steps: $total_steps")
+        if (rewritten == 0) {
+            log("No new records found")
+        } else {
+            log("Found $rewritten new records. Total new steps: $total_steps")
+        }
 
         return Result.success()
     }
@@ -82,18 +85,18 @@ class StepRewriteWorker(
         client.insertRecords(listOf(newRecord))
     }
 
-    private fun log(msg: String) {
+    private fun log(msg: String, color: String = "#808080") {
         val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.now())
-        val logLine = "<font color='#800000'>[$timestamp]</font> <font color='#808080'>$msg</font>"
-        Log.d("StepRewriteWorker", logLine)
+        val logLine = "<font color='#800000'>[$timestamp]</font> <font color='$color'>$msg</font>"
+        Log.d("StepRewriteWorker", logLine.replace(Regex("<.*?>"), "")) // Log plain text to Logcat
         val prefs = applicationContext.getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
         val logs = prefs.getString("logs", "") ?: ""
         prefs.edit().putString("logs", logLine + "<br>" + logs).apply()
     }
 
     private fun debug(msg: String) {
-        if (prefs.getBoolean("polar_quirk_fix", false)) {
-            log(msg)
+        if (prefs.getBoolean("debugging_enabled", false)) {
+            log(msg, color = "#FFA500") // Orange color
         }
     }
 }
