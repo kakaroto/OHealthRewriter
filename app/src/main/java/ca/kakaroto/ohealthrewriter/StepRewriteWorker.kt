@@ -39,6 +39,7 @@ class StepRewriteWorker(
             ) {
                 val record = change.record as StepsRecord
 
+                debug("New record: ${record.count} steps from ${record.startTime} to ${record.endTime} (metadata: ${record.metadata})")
                 if (record.metadata.dataOrigin.packageName != "com.heytap.health.international") continue
                 if (record.metadata.clientRecordId?.startsWith("rewritten_") == true) continue
                 log("New record: ${record.count} steps at ${record.endTime}")
@@ -88,5 +89,11 @@ class StepRewriteWorker(
         val prefs = applicationContext.getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
         val logs = prefs.getString("logs", "") ?: ""
         prefs.edit().putString("logs", logLine + "<br>" + logs).apply()
+    }
+
+    private fun debug(msg: String) {
+        if (prefs.getBoolean("polar_quirk_fix", false)) {
+            log(msg)
+        }
     }
 }

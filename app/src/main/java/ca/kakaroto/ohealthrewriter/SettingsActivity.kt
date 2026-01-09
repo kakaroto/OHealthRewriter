@@ -11,6 +11,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var manufacturerEditText: EditText
     private lateinit var modelEditText: EditText
     private lateinit var typeSpinner: Spinner
+    private lateinit var debuggingSwitch: Switch
 
     private val deviceTypes = arrayOf(
         "Watch" to Device.TYPE_WATCH,
@@ -29,6 +30,7 @@ class SettingsActivity : AppCompatActivity() {
         manufacturerEditText = findViewById(R.id.manufacturerEditText)
         modelEditText = findViewById(R.id.modelEditText)
         typeSpinner = findViewById(R.id.typeSpinner)
+        debuggingSwitch = findViewById(R.id.debuggingSwitch)
 
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, deviceTypes.map { it.first })
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -50,6 +52,7 @@ class SettingsActivity : AppCompatActivity() {
         if (typeIndex != -1) {
             typeSpinner.setSelection(typeIndex)
         }
+        debuggingSwitch.isChecked = prefs.getBoolean("debugging_enabled", false)
     }
 
     private fun saveSettings() {
@@ -58,6 +61,7 @@ class SettingsActivity : AppCompatActivity() {
         prefs.putString("device_model", modelEditText.text.toString())
         val selectedType = deviceTypes[typeSpinner.selectedItemPosition].second
         prefs.putInt("device_type", selectedType)
+        prefs.putBoolean("debugging_enabled", debuggingSwitch.isChecked)
         prefs.apply()
         finish()
     }
