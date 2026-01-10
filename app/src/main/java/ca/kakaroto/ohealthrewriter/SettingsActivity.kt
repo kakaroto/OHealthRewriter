@@ -11,6 +11,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var manufacturerEditText: EditText
     private lateinit var modelEditText: EditText
     private lateinit var typeSpinner: Spinner
+    private lateinit var polarQuirkSwitch: Switch
     private lateinit var debuggingSwitch: Switch
 
     private val deviceTypes = arrayOf(
@@ -30,6 +31,7 @@ class SettingsActivity : AppCompatActivity() {
         manufacturerEditText = findViewById(R.id.manufacturerEditText)
         modelEditText = findViewById(R.id.modelEditText)
         typeSpinner = findViewById(R.id.typeSpinner)
+        polarQuirkSwitch = findViewById(R.id.polarQuirkSwitch)
         debuggingSwitch = findViewById(R.id.debuggingSwitch)
 
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, deviceTypes.map { it.first })
@@ -52,6 +54,7 @@ class SettingsActivity : AppCompatActivity() {
         if (typeIndex != -1) {
             typeSpinner.setSelection(typeIndex)
         }
+        polarQuirkSwitch.isChecked = prefs.getBoolean("polar_quirk_fix", false)
         debuggingSwitch.isChecked = prefs.getBoolean("debugging_enabled", false)
     }
 
@@ -61,6 +64,7 @@ class SettingsActivity : AppCompatActivity() {
         prefs.putString("device_model", modelEditText.text.toString())
         val selectedType = deviceTypes[typeSpinner.selectedItemPosition].second
         prefs.putInt("device_type", selectedType)
+        prefs.putBoolean("polar_quirk_fix", polarQuirkSwitch.isChecked)
         prefs.putBoolean("debugging_enabled", debuggingSwitch.isChecked)
         prefs.apply()
         finish()

@@ -19,10 +19,12 @@ class StepRewriteWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    private val client = HealthConnectClient.getOrCreate(context)
+    // Made internal and var for testing
+    internal var client: HealthConnectClient = HealthConnectClient.getOrCreate(context)
     private val prefs = context.getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
 
     override suspend fun doWork(): Result {
+
         val token = prefs.getString("changes_token", null)
             ?: client.getChangesToken(
                 ChangesTokenRequest(setOf(StepsRecord::class))
@@ -30,7 +32,7 @@ class StepRewriteWorker(
 
         val response = client.getChanges(token)
         var rewritten = 0
-        var total_steps = 0
+        var totalSteps: Long = 0
 
         for (change in response.changes) {
             if (change is UpsertionChange &&
@@ -39,13 +41,21 @@ class StepRewriteWorker(
                 val record = change.record as StepsRecord
 
                 debug("New record: ${record.count} steps from ${record.startTime} to ${record.endTime} (metadata: ${record.metadata})")
-                if (record.metadata.dataOrigin.packageName != "com.heytap.health.international") continue
-                if (record.metadata.clientRecordId?.startsWith("rewritten_") == true) continue
-                log("New record: ${record.count} steps at ${record.endTime}")
 
-                rewrite(record)
-                rewritten++
-                total_steps += record.count.toInt()
+                if (record.metadata.dataOrigin.packageName == "fi.polar.polarflow" &&
+                    prefs.getBoolean("polar_quirk_fix", false)) {
+                    totalSteps += fixPolarQuirk(record)
+                    rewritten++
+                    continue // Polar records handled, move to the next change
+                }
+
+                if (record.metadata.dataOrigin.packageName == "com.heytap.health.international") {
+                    if (record.metadata.clientRecordId?.startsWith("rewritten_") == true) continue
+
+                    rewrite(record)
+                    rewritten++
+                    totalSteps += record.count
+                }
             }
         }
 
@@ -53,10 +63,58 @@ class StepRewriteWorker(
         if (rewritten == 0) {
             log("No new records found")
         } else {
-            log("Found $rewritten new records. Total new steps: $total_steps")
+            log("Found $rewritten new records. Total new steps: $totalSteps")
         }
 
         return Result.success()
+    }
+
+    // Made internal for testing
+    internal suspend fun fixPolarQuirk(record: StepsRecord): Long {
+        if (record.metadata.dataOrigin.packageName != "fi.polar.polarflow") return 0
+
+        val lastId = prefs.getString("polar_last_id", "")
+        val lastVersion = prefs.getLong("polar_last_version", 0)
+        val lastSteps = prefs.getLong("polar_last_steps", 0)
+        val lastTS = Instant.ofEpochMilli(prefs.getLong("polar_last_end_time", 0))
+
+        if (lastId == record.metadata.clientRecordId &&
+            lastVersion == record.metadata.clientRecordVersion) return 0
+
+        var newSteps = record.count
+        var startTime = record.startTime
+        if (lastId != record.metadata.clientRecordId) {
+            log("New Polar Flow record: ${record.count} steps")
+        } else {
+            newSteps = record.count - lastSteps
+            startTime = lastTS
+            log("Updated Polar Flow record: ${newSteps} new steps (Total changed from $lastSteps to ${record.count})")
+        }
+        val newRecord = StepsRecord(
+            count = newSteps,
+            startTime = startTime,
+            endTime = record.endTime,
+            startZoneOffset = record.startZoneOffset,
+            endZoneOffset = record.endZoneOffset,
+            metadata = Metadata(
+                clientRecordId = record.metadata.id,
+                clientRecordVersion = 1,
+                dataOrigin = record.metadata.dataOrigin,
+                device = record.metadata.device,
+                recordingMethod = record.metadata.recordingMethod
+            )
+        )
+        debug("Inserting new record: $newRecord")
+        client.insertRecords(listOf(newRecord))
+
+
+        val editor = prefs.edit()
+        editor.putString("polar_last_id", record.metadata.clientRecordId)
+        editor.putLong("polar_last_version", record.metadata.clientRecordVersion)
+        editor.putLong("polar_last_steps", record.count)
+        editor.putLong("polar_last_end_time", record.endTime.toEpochMilli())
+        editor.apply()
+        return newSteps
     }
 
     private suspend fun rewrite(old: StepsRecord) {
