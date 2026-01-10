@@ -83,11 +83,13 @@ class StepRewriteWorker(
 
         var newSteps = record.count
         var startTime = record.startTime
+        var clientId = "polarflow_${record.metadata.id}"
         if (lastId != record.metadata.clientRecordId) {
             log("New Polar Flow record: ${record.count} steps")
         } else {
             newSteps = record.count - lastSteps
             startTime = lastTS
+            clientId = "polarflow_${record.metadata.id}-update-${lastSteps}"
             log("Updated Polar Flow record: ${newSteps} new steps (Total changed from $lastSteps to ${record.count})")
         }
         val newRecord = StepsRecord(
@@ -97,7 +99,7 @@ class StepRewriteWorker(
             startZoneOffset = record.startZoneOffset,
             endZoneOffset = record.endZoneOffset,
             metadata = Metadata(
-                clientRecordId = record.metadata.id,
+                clientRecordId = clientId,
                 clientRecordVersion = 1,
                 dataOrigin = record.metadata.dataOrigin,
                 device = record.metadata.device,
