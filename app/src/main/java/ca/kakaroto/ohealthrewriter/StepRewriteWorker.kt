@@ -19,11 +19,14 @@ class StepRewriteWorker(
     params: WorkerParameters
 ) : CoroutineWorker(context, params) {
 
-    // Made internal and var for testing
-    internal var client: HealthConnectClient = HealthConnectClient.getOrCreate(context)
+    // Made internal and lateinit for testing
+    internal lateinit var client: HealthConnectClient
     private val prefs = context.getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
 
     override suspend fun doWork(): Result {
+        if (!::client.isInitialized) {
+            client = HealthConnectClient.getOrCreate(applicationContext)
+        }
 
         val token = prefs.getString("changes_token", null)
             ?: client.getChangesToken(
@@ -71,6 +74,9 @@ class StepRewriteWorker(
 
     // Made internal for testing
     internal suspend fun fixPolarQuirk(record: StepsRecord): Long {
+        if (!::client.isInitialized) {
+            client = HealthConnectClient.getOrCreate(applicationContext)
+        }
         if (record.metadata.dataOrigin.packageName != "fi.polar.polarflow") return 0
 
         val lastId = prefs.getString("polar_last_id", "")
