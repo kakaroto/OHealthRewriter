@@ -40,8 +40,11 @@ class StepRewriteWorkerTest {
         context = ApplicationProvider.getApplicationContext()
         prefs = context.getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
 
-        // Clear SharedPreferences before each test to ensure a clean state
-        prefs.edit().clear().commit()
+        // Clear SharedPreferences and set debugging to true before each test
+        prefs.edit()
+            .clear()
+            .putBoolean("debugging_enabled", true)
+            .commit()
 
         val workerFactory = object : WorkerFactory() {
             override fun createWorker(
@@ -73,6 +76,8 @@ class StepRewriteWorkerTest {
         val record3 = createStepsRecord(recordId, 300, 3, initialTime, initialTime.plusSeconds(120))
         val record4 = createStepsRecord(recordId, 300, 3, initialTime, initialTime.plusSeconds(120)) // Identical to record3
         val record5 = createStepsRecord(recordId2, 100, 1, initialTime.plusSeconds(3600), initialTime.plusSeconds(3660))
+        val record6 = createStepsRecord(recordId, 330, 4, initialTime, initialTime.plusSeconds(3599)) // Identical to record3
+        val record7 = createStepsRecord(recordId2, 123, 2, initialTime.plusSeconds(3600), initialTime.plusSeconds(3720))
 
         // --- Step 1: Process first record ---
         val newSteps1 = worker.fixPolarQuirk(record1)
@@ -114,6 +119,22 @@ class StepRewriteWorkerTest {
         assert(prefs.getLong("polar_last_version", 0) == 1L)
         assert(prefs.getLong("polar_last_steps", 0) == 100L)
         assert(prefs.getLong("polar_last_end_time", 0) == initialTime.plusSeconds(3660).toEpochMilli())
+
+        // --- Step 6: Process a final tally of previous day ---
+        val newSteps6 = worker.fixPolarQuirk(record6)
+        assert(newSteps6 == 30L)
+        assert(prefs.getString("polar_last_id", "") == recordId)
+        assert(prefs.getLong("polar_last_version", 0) == record6.metadata.clientRecordVersion)
+        assert(prefs.getLong("polar_last_steps", 0) == record6.count)
+        assert(prefs.getLong("polar_last_end_time", 0) == initialTime.plusSeconds(3599).toEpochMilli())
+
+        // --- Step 7: Back to processing an update on the new record ---
+        val newSteps7 = worker.fixPolarQuirk(record7)
+        assert(newSteps7 == 23L)
+        assert(prefs.getString("polar_last_id", "") == recordId2)
+        assert(prefs.getLong("polar_last_version", 0) == 2L)
+        assert(prefs.getLong("polar_last_steps", 0) == 123L)
+        assert(prefs.getLong("polar_last_end_time", 0) == initialTime.plusSeconds(3720).toEpochMilli())
     }
 
     private fun createStepsRecord(id: String, count: Long, version: Long, time: Instant, timeEnd: Instant): StepsRecord {

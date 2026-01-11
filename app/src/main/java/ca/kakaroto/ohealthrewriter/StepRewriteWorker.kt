@@ -14,6 +14,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+// package IDs as Constants
+const val OHEALTH_PACKAGE_ID = "com.heytap.health.international"
+const val POLAR_PACKAGE_ID = "fi.polar.polarflow"
 class StepRewriteWorker(
     context: Context,
     params: WorkerParameters
@@ -45,14 +48,14 @@ class StepRewriteWorker(
 
                 debug("New record: ${record.count} steps from ${record.startTime} to ${record.endTime} (metadata: ${record.metadata})")
 
-                if (record.metadata.dataOrigin.packageName == "fi.polar.polarflow" &&
+                if (record.metadata.dataOrigin.packageName == POLAR_PACKAGE_ID &&
                     prefs.getBoolean("polar_quirk_fix", false)) {
                     totalSteps += fixPolarQuirk(record)
                     rewritten++
                     continue // Polar records handled, move to the next change
                 }
 
-                if (record.metadata.dataOrigin.packageName == "com.heytap.health.international") {
+                if (record.metadata.dataOrigin.packageName == OHEALTH_PACKAGE_ID) {
                     if (record.metadata.clientRecordId?.startsWith("rewritten_") == true) continue
 
                     rewrite(record)
@@ -77,7 +80,7 @@ class StepRewriteWorker(
         if (!::client.isInitialized) {
             client = HealthConnectClient.getOrCreate(applicationContext)
         }
-        if (record.metadata.dataOrigin.packageName != "fi.polar.polarflow") return 0
+        if (record.metadata.dataOrigin.packageName != POLAR_PACKAGE_ID) return 0
 
         val lastId = prefs.getString("polar_last_id", "")
         val lastVersion = prefs.getLong("polar_last_version", 0)
@@ -91,7 +94,28 @@ class StepRewriteWorker(
         var startTime = record.startTime
         var clientId = "polarflow_${record.metadata.id}"
         if (lastId != record.metadata.clientRecordId) {
-            log("New Polar Flow record: ${record.count} steps")
+            val prevId = prefs.getString("polar_previous_id", "")
+            if (prevId == record.metadata.clientRecordId) {
+                val prevVersion = prefs.getLong("polar_previous_version", 0)
+                val prevSteps = prefs.getLong("polar_previous_steps", 0)
+                val prevTS = Instant.ofEpochMilli(prefs.getLong("polar_previous_end_time", 0))
+
+                if (prevVersion == record.metadata.clientRecordVersion) return 0
+
+                newSteps = record.count - prevSteps
+                startTime = prevTS
+                clientId = "polarflow_${record.metadata.id}-update-${prevSteps}"
+                log("Updated Polar Flow record (day rollover): ${newSteps} new steps (Total changed from $prevSteps to ${record.count})")
+            } else {
+                log("New Polar Flow record: ${record.count} steps")
+            }
+
+            val editor = prefs.edit()
+            editor.putString("polar_previous_id", lastId)
+            editor.putLong("polar_previous_version", lastVersion)
+            editor.putLong("polar_previous_steps", lastSteps)
+            editor.putLong("polar_previous_end_time", lastTS.toEpochMilli())
+            editor.apply()
         } else {
             newSteps = record.count - lastSteps
             startTime = lastTS
