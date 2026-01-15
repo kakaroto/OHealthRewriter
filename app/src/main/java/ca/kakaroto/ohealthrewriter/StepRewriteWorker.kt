@@ -52,7 +52,6 @@ class StepRewriteWorker(
                     prefs.getBoolean("polar_quirk_fix", false)) {
                     totalSteps += fixPolarQuirk(record)
                     rewritten++
-                    continue // Polar records handled, move to the next change
                 }
 
                 if (record.metadata.dataOrigin.packageName == OHEALTH_PACKAGE_ID) {
@@ -122,23 +121,24 @@ class StepRewriteWorker(
             clientId = "polarflow_${record.metadata.id}-update-${lastSteps}"
             log("Updated Polar Flow record: ${newSteps} new steps (Total changed from $lastSteps to ${record.count})")
         }
-        val newRecord = StepsRecord(
-            count = newSteps,
-            startTime = startTime,
-            endTime = record.endTime,
-            startZoneOffset = record.startZoneOffset,
-            endZoneOffset = record.endZoneOffset,
-            metadata = Metadata(
-                clientRecordId = clientId,
-                clientRecordVersion = 1,
-                dataOrigin = record.metadata.dataOrigin,
-                device = record.metadata.device,
-                recordingMethod = record.metadata.recordingMethod
+        if (newSteps > 0) {
+            val newRecord = StepsRecord(
+                count = newSteps,
+                startTime = startTime,
+                endTime = record.endTime,
+                startZoneOffset = record.startZoneOffset,
+                endZoneOffset = record.endZoneOffset,
+                metadata = Metadata(
+                    clientRecordId = clientId,
+                    clientRecordVersion = 1,
+                    dataOrigin = record.metadata.dataOrigin,
+                    device = record.metadata.device,
+                    recordingMethod = record.metadata.recordingMethod
+                )
             )
-        )
-        debug("Inserting new record: $newRecord")
-        client.insertRecords(listOf(newRecord))
-
+            debug("Inserting new record: $newRecord")
+            client.insertRecords(listOf(newRecord))
+        }
 
         val editor = prefs.edit()
         editor.putString("polar_last_id", record.metadata.clientRecordId)

@@ -78,6 +78,7 @@ class StepRewriteWorkerTest {
         val record5 = createStepsRecord(recordId2, 100, 1, initialTime.plusSeconds(3600), initialTime.plusSeconds(3660))
         val record6 = createStepsRecord(recordId, 330, 4, initialTime, initialTime.plusSeconds(3599)) // Identical to record3
         val record7 = createStepsRecord(recordId2, 123, 2, initialTime.plusSeconds(3600), initialTime.plusSeconds(3720))
+        val record8 = createStepsRecord(recordId2, 123, 3, initialTime.plusSeconds(3600), initialTime.plusSeconds(3720))
 
         // --- Step 1: Process first record ---
         val newSteps1 = worker.fixPolarQuirk(record1)
@@ -133,6 +134,22 @@ class StepRewriteWorkerTest {
         assert(newSteps7 == 23L)
         assert(prefs.getString("polar_last_id", "") == recordId2)
         assert(prefs.getLong("polar_last_version", 0) == 2L)
+        assert(prefs.getLong("polar_last_steps", 0) == 123L)
+        assert(prefs.getLong("polar_last_end_time", 0) == initialTime.plusSeconds(3720).toEpochMilli())
+
+        // --- Step 8: Sending same record twice ---
+        val newSteps8 = worker.fixPolarQuirk(record7)
+        assert(newSteps8 == 0L)
+        assert(prefs.getString("polar_last_id", "") == recordId2)
+        assert(prefs.getLong("polar_last_version", 0) == 2L)
+        assert(prefs.getLong("polar_last_steps", 0) == 123L)
+        assert(prefs.getLong("polar_last_end_time", 0) == initialTime.plusSeconds(3720).toEpochMilli())
+
+        // --- Step 9: same step count by increased version ---
+        val newSteps9 = worker.fixPolarQuirk(record8)
+        assert(newSteps9 == 0L)
+        assert(prefs.getString("polar_last_id", "") == recordId2)
+        assert(prefs.getLong("polar_last_version", 0) == 3L)
         assert(prefs.getLong("polar_last_steps", 0) == 123L)
         assert(prefs.getLong("polar_last_end_time", 0) == initialTime.plusSeconds(3720).toEpochMilli())
     }
