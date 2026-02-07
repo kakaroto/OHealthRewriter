@@ -1,9 +1,10 @@
 package ca.kakaroto.ohealthrewriter
 
 import android.app.Activity
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences
+import android.content.IntentFilter
 import android.os.Bundle
 import android.text.Html
 import android.view.Menu
@@ -13,22 +14,23 @@ import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.text.HtmlCompat
-import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
 import androidx.work.*
+import java.io.File
 import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
-class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
+const val ACTION_LOG_UPDATED = "ca.kakaroto.ohealthrewriter.LOG_UPDATED"
+
+class MainActivity : AppCompatActivity() {
 
     private lateinit var logView: TextView
-    private lateinit var prefs: SharedPreferences
     private lateinit var createFileLauncher: ActivityResultLauncher<Intent>
 
     private val permissions = setOf(
@@ -38,13 +40,21 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     )
 
     private val requestPermissions = registerForActivityResult(
-        PermissionController.createRequestPermissionResultContract()
-    ) { granted ->
-        if (granted.containsAll(permissions)) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.all { it.value }) {
             schedulePeriodicWorker()
             appendLog("Permissions granted")
         } else {
             appendLog("Permissions missing")
+        }
+    }
+
+    private val logUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_LOG_UPDATED) {
+                refreshLogs()
+            }
         }
     }
 
@@ -53,7 +63,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         setContentView(R.layout.activity_main)
 
         logView = findViewById(R.id.logView)
-        prefs = getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
+
+        migrateLogsFromPrefs()
 
         findViewById<Button>(R.id.pollButton).setOnClickListener {
             triggerManualPoll()
@@ -63,7 +74,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             clearLogs()
         }
 
-        requestPermissions.launch(permissions)
+        requestPermissions.launch(permissions.toTypedArray())
 
         createFileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == Activity.RESULT_OK) {
@@ -72,6 +83,45 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 }
             }
         }
+
+        ContextCompat.registerReceiver(this, logUpdateReceiver, IntentFilter(ACTION_LOG_UPDATED), ContextCompat.RECEIVER_NOT_EXPORTED)
+    }
+
+    private fun migrateLogsFromPrefs() {
+        val prefs = getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
+        val oldLogs = prefs.getString("logs", null)
+        val logFile = File(filesDir, LOG_FILE_NAME)
+
+        // Only migrate if there are old logs AND the new file doesn't already exist/is empty.
+        if (!oldLogs.isNullOrEmpty() && (!logFile.exists() || logFile.length() == 0L)) {
+            try {
+                // Old logs were stored with newest first (reverse chronological).
+                // We need to reverse them to get chronological order for the new file.
+                val oldLogLines = oldLogs.split("<br>").filter { it.isNotEmpty() }.reversed()
+
+                // Write the chronologically-ordered old logs to the new file.
+                openFileOutput(LOG_FILE_NAME, Context.MODE_PRIVATE).use { outputStream ->
+                    oldLogLines.forEach { line ->
+                        outputStream.write((line + "\n").toByteArray())
+                    }
+                }
+
+                // Once migrated, remove the old value from prefs
+                prefs.edit().remove("logs").apply()
+                appendLog("Successfully migrated logs from older version.", "#008000")
+            } catch (e: Exception) {
+                appendLog("Failed to migrate logs: ${e.message}", "#FF0000")
+            }
+        } else if (!oldLogs.isNullOrEmpty()) {
+            // Edge case: Both old logs and a new log file exist. Log this for debugging.
+            appendLog("Could not automatically migrate logs. Please export and clear data if needed.", "#FF0000")
+            prefs.edit().remove("logs").apply() // Remove old logs to prevent this message on every launch
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(logUpdateReceiver)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -95,21 +145,9 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     override fun onResume() {
         super.onResume()
-        prefs.registerOnSharedPreferenceChangeListener(this)
         refreshLogs()
         appendLog("Checking for new steps data...")
         poll()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        prefs.unregisterOnSharedPreferenceChangeListener(this)
-    }
-
-    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key == "logs") {
-            refreshLogs()
-        }
     }
 
     private fun schedulePeriodicWorker() {
@@ -133,20 +171,40 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         poll()
     }
 
-    private fun appendLog(msg: String) {
+    private fun appendLog(msg: String, color: String = "#808080") {
         val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.now())
-        val logLine = "<font color='#800000'>[$timestamp]</font> <font color='#808080'>$msg</font>"
-        val logs = prefs.getString("logs", "") ?: ""
-        prefs.edit().putString("logs", logLine + "<br>" + logs).apply()
+        val logLine = "<font color='#800000'>[$timestamp]</font> <font color='$color'>$msg</font>"
+        try {
+            openFileOutput(LOG_FILE_NAME, Context.MODE_APPEND).use {
+                it.write((logLine + "\n").toByteArray())
+            }
+            val intent = Intent(ACTION_LOG_UPDATED).apply {
+                setPackage(packageName)
+            }
+            sendBroadcast(intent)
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
     }
 
     private fun refreshLogs() {
-        val logs = prefs.getString("logs", "") ?: ""
-        logView.text = HtmlCompat.fromHtml(logs, HtmlCompat.FROM_HTML_MODE_LEGACY)
+        val logFile = File(filesDir, LOG_FILE_NAME)
+        if (logFile.exists()) {
+            val logLines = logFile.readLines()
+            // Reverse the order of lines for display (newest first) and join for HTML
+            val reversedContent = logLines.reversed().joinToString("<br>")
+            logView.text = HtmlCompat.fromHtml(reversedContent, HtmlCompat.FROM_HTML_MODE_LEGACY)
+        } else {
+            logView.text = ""
+        }
     }
 
     private fun clearLogs() {
-        prefs.edit().putString("logs", "").apply()
+        val logFile = File(filesDir, LOG_FILE_NAME)
+        if (logFile.exists()) {
+            logFile.delete()
+        }
+        refreshLogs()
     }
 
     private fun exportLog() {
@@ -160,9 +218,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private fun writeLogToFile(uri: android.net.Uri) {
         try {
-            val logs = prefs.getString("logs", "") ?: ""
-            contentResolver.openOutputStream(uri)?.use { 
-                it.write(logs.toByteArray())
+            contentResolver.openOutputStream(uri)?.use { outputStream ->
+                val logFile = File(filesDir, LOG_FILE_NAME)
+                if (logFile.exists()) {
+                    outputStream.write(logFile.readBytes())
+                }
             }
         } catch (e: IOException) {
             e.printStackTrace()

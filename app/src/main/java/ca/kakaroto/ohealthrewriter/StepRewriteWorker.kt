@@ -1,6 +1,7 @@
 package ca.kakaroto.ohealthrewriter
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.changes.UpsertionChange
@@ -17,6 +18,8 @@ import java.time.format.DateTimeFormatter
 // package IDs as Constants
 const val OHEALTH_PACKAGE_ID = "com.heytap.health.international"
 const val POLAR_PACKAGE_ID = "fi.polar.polarflow"
+const val LOG_FILE_NAME = "app_log.html"
+
 class StepRewriteWorker(
     context: Context,
     params: WorkerParameters
@@ -179,9 +182,17 @@ class StepRewriteWorker(
         val timestamp = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault()).format(Instant.now())
         val logLine = "<font color='#800000'>[$timestamp]</font> <font color='$color'>$msg</font>"
         Log.d("StepRewriteWorker", logLine.replace(Regex("<.*?>"), "")) // Log plain text to Logcat
-        val prefs = applicationContext.getSharedPreferences("hc_prefs", Context.MODE_PRIVATE)
-        val logs = prefs.getString("logs", "") ?: ""
-        prefs.edit().putString("logs", logLine + "<br>" + logs).apply()
+        try {
+            applicationContext.openFileOutput(LOG_FILE_NAME, Context.MODE_APPEND).use {
+                it.write((logLine + "\n").toByteArray())
+            }
+            val intent = Intent(ACTION_LOG_UPDATED).apply {
+                setPackage(applicationContext.packageName)
+            }
+            applicationContext.sendBroadcast(intent)
+        } catch (e: Exception) {
+            Log.e("StepRewriteWorker", "Could not write to log file", e)
+        }
     }
 
     private fun debug(msg: String) {
