@@ -6,18 +6,18 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
-import android.text.Html
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Button
-import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.text.HtmlCompat
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.work.*
 import java.io.File
 import java.io.IOException
@@ -30,7 +30,7 @@ const val ACTION_LOG_UPDATED = "ca.kakaroto.ohealthrewriter.LOG_UPDATED"
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var logView: TextView
+    private lateinit var logAdapter: LogAdapter
     private lateinit var createFileLauncher: ActivityResultLauncher<Intent>
 
     private val permissions = setOf(
@@ -53,7 +53,7 @@ class MainActivity : AppCompatActivity() {
     private val logUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_LOG_UPDATED) {
-                refreshLogs()
+                logAdapter.reloadLogs()
             }
         }
     }
@@ -62,7 +62,28 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        logView = findViewById(R.id.logView)
+        val logRecyclerView = findViewById<RecyclerView>(R.id.logRecyclerView)
+        val layoutManager = LinearLayoutManager(this).apply {
+            reverseLayout = true // Show newest items at the bottom and scroll up for older
+        }
+        logRecyclerView.layoutManager = layoutManager
+        logAdapter = LogAdapter(this)
+        logRecyclerView.adapter = logAdapter
+
+        logRecyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                val lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition()
+                //Log.d("MainActivity", "onScrolled: dy=$dy, lastVisible=$lastVisibleItemPosition, itemCount=${logAdapter.itemCount}")
+                // The log is reversed, so scrolling "up" means dy is positive.
+                // We check if the last visible item is at the end of the list.
+                if (dy < 0) { // Scrolling down (which is up in the log list)
+                    if (lastVisibleItemPosition == logAdapter.itemCount - 1) {
+                        logAdapter.loadMoreLogs()
+                    }
+                }
+            }
+        })
 
         migrateLogsFromPrefs()
 
@@ -145,7 +166,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        refreshLogs()
+        logAdapter.reloadLogs()
         appendLog("Checking for new steps data...")
         poll()
     }
@@ -187,24 +208,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshLogs() {
-        val logFile = File(filesDir, LOG_FILE_NAME)
-        if (logFile.exists()) {
-            val logLines = logFile.readLines()
-            // Reverse the order of lines for display (newest first) and join for HTML
-            val reversedContent = logLines.reversed().joinToString("<br>")
-            logView.text = HtmlCompat.fromHtml(reversedContent, HtmlCompat.FROM_HTML_MODE_LEGACY)
-        } else {
-            logView.text = ""
-        }
-    }
-
     private fun clearLogs() {
         val logFile = File(filesDir, LOG_FILE_NAME)
         if (logFile.exists()) {
             logFile.delete()
         }
-        refreshLogs()
+        logAdapter.reloadLogs()
     }
 
     private fun exportLog() {
