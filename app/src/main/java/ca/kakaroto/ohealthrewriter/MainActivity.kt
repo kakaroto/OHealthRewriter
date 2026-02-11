@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
-import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Button
@@ -18,6 +17,7 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.StepsRecord
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.work.*
 import java.io.File
 import java.io.IOException
@@ -32,6 +32,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var logAdapter: LogAdapter
     private lateinit var createFileLauncher: ActivityResultLauncher<Intent>
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
 
     private val permissions = setOf(
         HealthPermission.getReadPermission(StepsRecord::class),
@@ -54,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == ACTION_LOG_UPDATED) {
                 logAdapter.reloadLogs()
+                swipeRefreshLayout.isRefreshing = false
             }
         }
     }
@@ -62,10 +64,13 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val logRecyclerView = findViewById<RecyclerView>(R.id.logRecyclerView)
-        val layoutManager = LinearLayoutManager(this).apply {
-            reverseLayout = true // Show newest items at the bottom and scroll up for older
+        swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
+        swipeRefreshLayout.setOnRefreshListener {
+            triggerManualPoll()
         }
+
+        val logRecyclerView = findViewById<RecyclerView>(R.id.logRecyclerView)
+        val layoutManager = LinearLayoutManager(this) // No longer reversed
         logRecyclerView.layoutManager = layoutManager
         logAdapter = LogAdapter(this)
         logRecyclerView.adapter = logAdapter
@@ -73,14 +78,9 @@ class MainActivity : AppCompatActivity() {
         logRecyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                 super.onScrolled(recyclerView, dx, dy)
-                val lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition()
-                //Log.d("MainActivity", "onScrolled: dy=$dy, lastVisible=$lastVisibleItemPosition, itemCount=${logAdapter.itemCount}")
-                // The log is reversed, so scrolling "up" means dy is positive.
-                // We check if the last visible item is at the end of the list.
-                if (dy < 0) { // Scrolling down (which is up in the log list)
-                    if (lastVisibleItemPosition == logAdapter.itemCount - 1) {
-                        logAdapter.loadMoreLogs()
-                    }
+                // Load more older logs when the user scrolls to the bottom
+                if (!recyclerView.canScrollVertically(1)) { // Check if we can scroll down
+                    logAdapter.loadMoreLogs()
                 }
             }
         })
@@ -188,6 +188,7 @@ class MainActivity : AppCompatActivity() {
         WorkManager.getInstance(this).enqueue(work)
     }
     private fun triggerManualPoll() {
+        swipeRefreshLayout.isRefreshing = true
         appendLog("Manual poll triggered")
         poll()
     }
